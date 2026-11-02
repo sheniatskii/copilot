@@ -27,6 +27,7 @@ import type {
   Profile,
   ProviderConfig,
   ScreenTask,
+  SessionStartOptions,
   Settings,
   ShortcutAction,
   Source
@@ -136,7 +137,7 @@ function broadcast(channel: string, payload: unknown): void {
 function asrConfig() {
   const a = s().asr
   const language: 'auto' | Lang = a.language
-  return { backend: a.backend as AsrBackend, model: a.model, language, vocabulary: a.vocabulary, threads: a.threads }
+  return { backend: a.backend as AsrBackend, model: a.model, language, vocabulary: a.vocabulary, vocabPrompt: a.vocabPrompt, threads: a.threads }
 }
 
 function updateLlmStatus(): void {
@@ -376,7 +377,12 @@ function afterStart(id: string, mode: 'practice' | 'live' | 'meeting'): string {
   return id
 }
 
-function startSession(mode: 'practice' | 'live' | 'meeting'): string {
+/** Without an explicit mode I use the one last chosen on Home, so the overlay, tray and hotkey start the same kind. */
+function startSession(mode: SessionStartOptions['mode'] = s().sessionMode): string {
+  if (mode !== s().sessionMode) {
+    settings.patch({ sessionMode: mode })
+    broadcast('km:settings', s())
+  }
   return afterStart(sessionMgr.start({ mode }), mode)
 }
 
@@ -417,7 +423,7 @@ function stopSession(): void {
 
 function toggleListen(): void {
   if (!sessionMgr.active) {
-    startSession('live')
+    startSession()
     return
   }
   if (sessionMgr.snap.listening) {
@@ -592,7 +598,7 @@ function refreshTray(): void {
       { label: t('Показать/скрыть подсказки'), click: toggleOverlay },
       active
         ? { label: sessionMgr.snap.listening ? t('Пауза') : t('Продолжить'), click: toggleListen }
-        : { label: t('Начать сессию'), click: () => startSession('live') },
+        : { label: t('Начать сессию'), click: () => startSession() },
       ...(active ? [{ label: t('Завершить сессию'), click: stopSession }] : []),
       { type: 'separator' },
       { label: t('Аварийная остановка'), click: panic },
@@ -714,13 +720,13 @@ function registerIpc(): void {
     return r
   })
 
-  handle('km:session:start', (mode: 'practice' | 'live' | 'meeting') => startSession(mode))
+  handle('km:session:start', (mode?: SessionStartOptions['mode']) => startSession(mode ?? undefined))
   handle('km:session:resume', () => resumeSession())
   handle('km:session:stop', () => stopSession())
   handle('km:session:toggleListen', () => toggleListen())
   handle('km:session:answerNow', (kind?: AnswerKind) => sessionMgr.answerNow(kind ?? 'say', 'manual'))
   handle('km:session:askTyped', (text: string) => {
-    if (!sessionMgr.active) startSession('practice')
+    if (!sessionMgr.active) startSession()
     sessionMgr.askTyped(text)
   })
   handle('km:session:confirm', (id: string) => sessionMgr.confirmCandidate(id))

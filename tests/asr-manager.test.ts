@@ -40,7 +40,12 @@ function setup() {
   servers.length = 0
   const assets = { serverPath: () => '/bin/whisper-server', hasModel: () => true, modelPath: (m: string) => `/models/${m}.bin` }
   const ev = { status: () => {}, segment: vi.fn(), log: () => {} }
-  const mgr = new AsrManager(assets as never, (() => Promise.reject(new Error('no net'))) as never, { backend: 'cpu', model: 'small', language: 'uk', vocabulary: [], threads: 8 }, ev)
+  const mgr = new AsrManager(
+    assets as never,
+    (() => Promise.reject(new Error('no net'))) as never,
+    { backend: 'cpu', model: 'small', language: 'uk', vocabulary: [], vocabPrompt: false, threads: 8 },
+    ev
+  )
   return { mgr, ev }
 }
 
@@ -59,7 +64,7 @@ describe('AsrManager start races', () => {
     const { mgr } = setup()
     void mgr.ensure()
     await Promise.resolve()
-    mgr.setConfig({ backend: 'cpu', model: 'turbo', language: 'uk', vocabulary: [], threads: 8 })
+    mgr.setConfig({ backend: 'cpu', model: 'turbo', language: 'uk', vocabulary: [], vocabPrompt: false, threads: 8 })
     servers[0].finishStart()
     await vi.waitFor(() => expect(servers).toHaveLength(2))
     servers[1].finishStart()

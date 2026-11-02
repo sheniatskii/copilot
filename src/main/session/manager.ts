@@ -2,6 +2,7 @@ import type {
   AnswerEvent,
   AnswerKind,
   AppSnapshot,
+  HistoryEntry,
   ChatImage,
   ComponentStatus,
   ModelRole,
@@ -57,18 +58,23 @@ interface Inflight {
 
 const cloudDenied = () => t('Отправка в облако не разрешена — включите её в «Приватность» или выберите локальную модель')
 
+// Earlier questions with answers the overlay can page back through; older ones stay in History.
+const HISTORY_SIZE = 10
+
 const off = (): ComponentStatus => ({ state: 'off', label: t('выкл.') })
 
 export function emptySnapshot(): AppSnapshot {
   return {
     sessionId: null,
     startedAt: null,
+    mode: null,
     state: 'idle',
     listening: false,
     activeQuestion: null,
     candidates: [],
     answers: {},
     recentQuestions: [],
+    history: [],
     partial: {},
     segments: [],
     status: {
@@ -96,6 +102,8 @@ export class SessionManager {
   private finals: TranscriptSegment[] = []
   private index: Bm25Index | null = null
   private chunks: Chunk[] = []
+  // Finished answer texts per question, so earlier questions can be reread in the overlay.
+  private answered = new Map<string, Partial<Record<AnswerKind, string>>>()
   private startedAt = 0
   private persist = true
   private answerUserSource = false
@@ -120,6 +128,7 @@ export class SessionManager {
     this.coord = new QuestionCoordinator(id, { ...DEFAULT_COORDINATOR, answerUserSource: this.answerUserSource }, this.d.newId)
     this.board.setActive(null)
     this.finals = []
+    this.answered.clear()
     this.reloadKnowledge()
     this.d.budget.resetSession()
     if (this.persist) {
@@ -129,12 +138,14 @@ export class SessionManager {
     Object.assign(this.snap, {
       sessionId: id,
       startedAt: this.startedAt,
+      mode: opts.mode,
       state: 'listening',
       listening: true,
       activeQuestion: null,
       candidates: [],
       answers: {},
       recentQuestions: [],
+      history: [],
       partial: {},
       segments: [],
       budgetBlocked: null,
@@ -276,6 +287,7 @@ export class SessionManager {
 
   nextQuestion(): void {
     if (!this.coord) return
+    this.archive()
     this.cancelAll()
     this.coord.clear()
     this.board.setActive(null)
@@ -340,7 +352,20 @@ export class SessionManager {
     this.d.emit()
   }
 
+  /** Keeps the outgoing question and whatever it was answered with, so the overlay can page back to it. */
+  private archive(): void {
+    const q = this.snap.activeQuestion
+    if (!q) return
+    const answers: HistoryEntry['answers'] = {}
+    for (const [kind, ev] of Object.entries(this.snap.answers) as [AnswerKind, AnswerEvent][]) if (ev?.text) answers[kind] = ev.text
+    if (!Object.keys(answers).length) return
+    this.snap.history = [...this.snap.history.filter((h) => h.questionId !== q.questionId), { questionId: q.questionId, text: q.text, answers }].slice(
+      -HISTORY_SIZE
+    )
+  }
+
   private applyQuestion(q: QuestionEvent): void {
+    if (q.questionId !== this.snap.activeQuestion?.questionId) this.archive()
     for (const [id, f] of this.inflight) {
       if (f.questionId !== q.questionId || f.revision !== q.revision) {
         f.ctrl.abort()
@@ -360,9 +385,9 @@ export class SessionManager {
     this.snap.candidates = c?.candidates ?? []
     this.snap.recentQuestions = (c?.questions ?? [])
       .filter((q) => q.questionId !== a?.questionId)
-      .slice(-6)
+      .slice(-10)
       .reverse()
-      .map((q) => ({ questionId: q.questionId, text: q.text }))
+      .map((q) => ({ questionId: q.questionId, text: q.text, answers: this.answered.get(q.questionId) ?? {} }))
     this.snap.answers = this.board.answers
   }
 
@@ -578,6 +603,12 @@ export class SessionManager {
 
   private finish(ev: AnswerEvent, publish: (ev: AnswerEvent) => void): void {
     publish(ev)
+    if (ev.status === 'done' && ev.text) {
+      this.answered.set(ev.questionId, { ...this.answered.get(ev.questionId), [ev.kind]: ev.text })
+      // an answer can finish after its question moved into the history list
+      const past = this.snap.recentQuestions.find((r) => r.questionId === ev.questionId)
+      if (past) past.answers = this.answered.get(ev.questionId) ?? {}
+    }
     if (this.persist && ev.status !== 'stale') this.d.db.upsertAnswer(ev)
     this.inflight.delete(ev.answerId)
     if (this.board.isActive(ev.questionId, ev.revision) && ![...this.inflight.values()].some((f) => f.questionId === ev.questionId)) {

@@ -374,5 +374,11 @@ export const SETTINGS: Dict = {
   'Готовая фраза, которую можно произнести, и список тезисов под ней.': [
     'Готова фраза, яку можна вимовити, і список тез під нею.',
     'A ready sentence to say, with talking points under it.'
-  ]
+  ],
+  'Подсказывать термины распознаванию': ['Підказувати терміни розпізнаванню', 'Hint the terms to speech recognition'],
+  'Термины из словаря уходят в whisper как подсказка — аббревиатуры (SDLC, STLC) пишутся латиницей, а не «СДЛС». Если в тишине начнут появляться лишние слова из словаря — выключите.':
+    [
+      'Терміни зі словника йдуть у whisper як підказка — абревіатури (SDLC, STLC) пишуться латиницею, а не «СДЛС». Якщо в тиші почнуть з’являтися зайві слова зі словника — вимкніть.',
+      'Vocabulary terms go to whisper as a hint, so acronyms (SDLC, STLC) come out in Latin letters. If stray vocabulary words start appearing during silence, turn this off.'
+    ]
 }

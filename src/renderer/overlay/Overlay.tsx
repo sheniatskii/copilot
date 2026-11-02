@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AnswerEvent, AppSnapshot, ComponentStatus, ConvState, Settings } from '@shared/types'
 import { api, km } from '../lib/api'
 import { useSettingsFeed, useSnapshot } from '../lib/hooks'
@@ -7,8 +7,8 @@ import { pretty } from '../lib/keys'
 import { Markdown, MarkdownInline } from '../lib/md'
 
 const COMPACT_MIN = 120
-// Longer questions collapse to their first words so the answer keeps the space; a click shows the whole text.
-const QUESTION_WORDS = 10
+
+const MODE_LABEL: Record<'practice' | 'live' | 'meeting', string> = { practice: 'Тренировка', live: 'Интервью', meeting: 'Встреча' }
 
 const STATE_LABEL: Partial<Record<ConvState, string>> = {
   listening: 'Слушаю…',
@@ -29,10 +29,6 @@ function provenance(a: AnswerEvent | undefined): string {
   return parts.join(' · ')
 }
 
-function codeBlocks(text: string): string[] {
-  return [...text.matchAll(/```[\w+-]*\n([\s\S]*?)```/g)].map((m) => m[1].trimEnd())
-}
-
 export function Overlay() {
   const [init, setInit] = useState<{
     snap: AppSnapshot
@@ -43,7 +39,7 @@ export function Overlay() {
   }, [])
   const snap = useSnapshot(init?.snap ?? null)
   const [settings] = useSettingsFeed(init?.settings ?? null)
-  const [tab, setTab] = useState<'answer' | 'code' | 'questions'>('answer')
+  const [tab, setTab] = useState<'answer' | 'history'>('answer')
   const body = useRef<HTMLDivElement>(null)
   const inner = useRef<HTMLDivElement>(null)
   const chipRow = useRef<HTMLDivElement>(null)
@@ -103,15 +99,13 @@ export function Overlay() {
   const a = snap?.answers ?? {}
   const say = a.say ?? a.screen
   const deep = a.deep
-  const codes = useMemo(() => [...codeBlocks(deep?.text ?? ''), ...codeBlocks(a.screen?.text ?? '')], [deep?.text, a.screen?.text])
 
   if (!snap || !settings) return null
   // t() is not reactive, so the language has to be set before this render's labels are built, not in an effect.
   setLang(settings.uiLang)
   const expanded = settings.overlay.expanded
   const q = snap.activeQuestion
-  const qWords = q ? q.text.split(/\s+/).filter(Boolean) : []
-  const longQ = qWords.length > QUESTION_WORDS
+  const cueMode = settings.answerFormat === 'cues'
   const live = snap.partial.remote || snap.partial.user
   const errorAns = [a.say, a.points, a.deep, a.screen].find((x) => x?.status === 'error' || x?.status === 'blocked')
   const points = (a.points?.text ?? '')
@@ -153,7 +147,7 @@ export function Overlay() {
             {snap.listening ? <Kbd k={keys.toggleListen} /> : t('Пауза')}
           </button>
         ) : (
-          <button className="ov-pill primary" onClick={() => void api.session.start('live')}>
+          <button className="ov-pill primary" title={t(MODE_LABEL[settings.sessionMode])} onClick={() => void api.session.start()}>
             {t('Начать')}
           </button>
         )}
@@ -229,7 +223,10 @@ export function Overlay() {
 
       <section className="ov-card">
         <div className="ov-card-head">
-          <span className={`ov-state ${snap.state === 'generating' ? 'busy' : ''}`}>{t(STATE_LABEL[snap.state] ?? (q ? 'Вопрос' : 'Слушаю…'))}</span>
+          <span className={`ov-state ${snap.state === 'generating' ? 'busy' : ''}`}>
+            {snap.mode && <b className="ov-mode">{t(MODE_LABEL[snap.mode])}</b>}
+            {t(STATE_LABEL[snap.state] ?? (q ? 'Вопрос' : 'Слушаю…'))}
+          </span>
           <span className="grow" />
           <button
             className={`ov-pill sm ${settings.autoAnswer ? 'on' : ''}`}
@@ -243,16 +240,13 @@ export function Overlay() {
           </button>
         </div>
 
-        {expanded && (
+        {(expanded || cueMode) && (
           <nav className="ov-tabs">
             <button className={tab === 'answer' ? 'on' : ''} onClick={() => setTab('answer')}>
-              {t('Ответить')}
+              {t('Ответ')}
             </button>
-            <button className={tab === 'code' ? 'on' : ''} onClick={() => setTab('code')}>
-              {t('Код')} {codes.length ? `(${codes.length})` : ''}
-            </button>
-            <button className={tab === 'questions' ? 'on' : ''} onClick={() => setTab('questions')}>
-              {t('Последние вопросы')}
+            <button className={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>
+              {t('Предыдущие')} {snap.recentQuestions.length ? `(${snap.recentQuestions.length})` : ''}
             </button>
           </nav>
         )}
@@ -282,11 +276,11 @@ export function Overlay() {
               </div>
             )}
 
-            {tab === 'answer' || !expanded ? (
+            {tab === 'answer' || !(expanded || cueMode) ? (
               <>
                 {q && (
-                  <div className={`ov-q ${longQ ? 'clickable' : ''}`} title={longQ && !qOpen ? q.text : undefined} onClick={() => longQ && setQOpen((v) => !v)}>
-                    <b className="ov-label">{t('Вопрос')}:</b> {longQ && !qOpen ? `${qWords.slice(0, QUESTION_WORDS).join(' ')}…` : q.text}
+                  <div className={`ov-q ${qOpen ? 'open' : ''}`} title={qOpen ? undefined : q.text} onClick={() => setQOpen((v) => !v)}>
+                    <b className="ov-label">{t('Вопрос')}:</b> {q.text}
                     {q.revision > 1 && <span className="ov-rev"> · {t('уточнено')}</span>}
                     <button
                       className="ov-copy"
@@ -306,17 +300,7 @@ export function Overlay() {
                     {say.kind === 'screen' ? (
                       <Markdown text={say.text} />
                     ) : settings.answerFormat === 'cues' ? (
-                      // one cue per line: the «→» chain reads as a checklist instead of one long line
-                      <span className="ov-cues">
-                        {say.text
-                          .split(/\s*→\s*/)
-                          .filter(Boolean)
-                          .map((c, i) => (
-                            <span key={i} className="ov-cue">
-                              <Cue text={c} />
-                            </span>
-                          ))}
-                      </span>
+                      <Cues text={say.text} />
                     ) : (
                       <MarkdownInline text={say.text} />
                     )}
@@ -358,23 +342,10 @@ export function Overlay() {
                 )}
                 {!snap.sessionId && <div className="faint ov-hint">{t('Сессия не запущена')}</div>}
               </>
-            ) : tab === 'code' ? (
-              codes.length ? (
-                codes.map((c, i) => (
-                  <div key={i} className="ov-code">
-                    <button className="ov-link" onClick={() => void api.copy(c)}>
-                      {t('Копировать')}
-                    </button>
-                    <pre>{c}</pre>
-                  </div>
-                ))
-              ) : (
-                <div className="faint ov-hint">{t('Код появится после «Подробнее» или снимка экрана с режимом «с кодом».')}</div>
-              )
             ) : (
               <ul className="ov-recent">
                 {snap.recentQuestions.map((r) => (
-                  <li key={r.questionId}>{r.text}</li>
+                  <PastAnswer key={r.questionId} r={r} cues={cueMode} />
                 ))}
                 {!snap.recentQuestions.length && <li className="faint">{t('Пока пусто')}</li>}
               </ul>
@@ -415,14 +386,58 @@ function SourceToggle({ kind, on, status, onClick }: { kind: 'mic' | 'system'; o
   )
 }
 
-/** «Part: examples» — the part before the first colon is the heading the user scans for. */
+/**
+ * «Part: examples» — the part before the first colon is the heading the user scans for. Models sometimes wrap the
+ * whole cue in **…**, which would paint the entire line; the cue format has its own emphasis, so I drop the asterisks.
+ */
 function Cue({ text }: { text: string }) {
-  const i = text.indexOf(':')
-  if (i <= 0 || i > 60) return <MarkdownInline text={text} />
+  const plain = text.replace(/\*\*/g, '').trim()
+  const i = plain.indexOf(':')
+  if (i <= 0 || i > 60) return <MarkdownInline text={plain} />
   return (
     <>
-      <strong>{text.slice(0, i).replace(/\*\*/g, '')}:</strong> <MarkdownInline text={text.slice(i + 1).trim()} />
+      <strong>{plain.slice(0, i)}:</strong> <MarkdownInline text={plain.slice(i + 1).trim()} />
     </>
+  )
+}
+
+/** One cue per line: the «→» chain reads as a checklist instead of one long line. */
+function Cues({ text }: { text: string }) {
+  return (
+    <span className="ov-cues">
+      {text
+        .split(/\s*→\s*/)
+        .filter(Boolean)
+        .map((c, i) => (
+          <span key={i} className="ov-cue">
+            <Cue text={c} />
+          </span>
+        ))}
+    </span>
+  )
+}
+
+/** An earlier question with what it got: cues or the quick answer up front, the detailed one on demand. */
+function PastAnswer({ r, cues }: { r: AppSnapshot['recentQuestions'][number]; cues: boolean }) {
+  const [open, setOpen] = useState(false)
+  const { say, points, deep, screen } = r.answers
+  return (
+    <li className="ov-past">
+      <div className="ov-past-q">{r.text}</div>
+      {screen ? <Markdown text={screen} /> : say ? cues ? <Cues text={say} /> : <MarkdownInline text={say} /> : null}
+      {points && !cues && <Markdown text={points} />}
+      {deep &&
+        (open ? (
+          <section className="ov-deep">
+            <Markdown text={deep} />
+          </section>
+        ) : (
+          <button className="ov-link" onClick={() => setOpen(true)}>
+            {t('Подробнее')} →
+          </button>
+        ))}
+      {!say && !screen && !deep && <span className="faint">{t('Без ответа')}</span>}
+    </li>
   )
 }
 

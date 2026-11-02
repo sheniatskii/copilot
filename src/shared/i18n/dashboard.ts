@@ -264,5 +264,9 @@ export const DASHBOARD: Dict = {
   'Вопрос, который не распознался… Enter — ответить, Esc — отмена': [
     'Питання, яке не розпізналось… Enter — відповісти, Esc — скасувати',
     'A question that was not recognized… Enter to answer, Esc to cancel'
-  ]
+  ],
+  Интервью: ['Інтерв’ю', 'Interview'],
+  Встреча: ['Зустріч', 'Meeting'],
+  Предыдущие: ['Попередні', 'Earlier'],
+  'Без ответа': ['Без відповіді', 'No answer']
 }

@@ -120,3 +120,30 @@ describe('cue language', () => {
     expect(sys).not.toContain('Functional: unit')
   })
 })
+
+describe('user preparation notes', () => {
+  it('tell the model to answer from the user’s own prep, also for theory questions', () => {
+    const notes = {
+      id: 'n',
+      documentId: 'd',
+      docName: 'prep.pdf',
+      kind: 'notes' as const,
+      section: 'SDLC / STLC',
+      text: 'STLC (частина SDLC): аналіз вимог → планування → тест-кейси'
+    }
+    const p = buildPrompt({
+      question: 'В чому різниця SDLC та STLC?',
+      kind: 'say',
+      profile,
+      cues: true,
+      answerLang: 'auto',
+      transcript: [],
+      earlierQuestions: [],
+      knowledge: [notes]
+    })
+    const sys = String(p.messages[0].content)
+    expect(sys).toContain("<notes> is the user's own interview preparation")
+    expect(sys).toContain('take the parts and examples from there')
+    expect(String(p.messages[1].content)).toContain('STLC (частина SDLC)')
+  })
+})

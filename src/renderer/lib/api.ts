@@ -89,7 +89,7 @@ export const api = {
     test: (id: string, model: string | null) => call<ProviderTestReport>('km:providers:test', id, model)
   },
   session: {
-    start: (mode: 'practice' | 'live' | 'meeting') => call<string>('km:session:start', mode),
+    start: (mode?: 'practice' | 'live' | 'meeting') => call<string>('km:session:start', mode),
     resume: () => call<string | null>('km:session:resume'),
     stop: () => call<void>('km:session:stop'),
     toggleListen: () => call<void>('km:session:toggleListen'),

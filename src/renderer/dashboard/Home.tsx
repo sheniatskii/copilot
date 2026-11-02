@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { AppSnapshot, SessionStartOptions } from '@shared/types'
 import { api } from '../lib/api'
 import { useAsync } from '../lib/hooks'
@@ -8,7 +7,8 @@ import type { Ctx } from './App'
 import { fmtDate, Status } from './ui'
 
 export function Home({ ctx, snap }: { ctx: Ctx; snap: AppSnapshot }) {
-  const [mode, setMode] = useState<SessionStartOptions['mode']>('practice')
+  // The chosen mode lives in settings, so the overlay, tray and hotkey start the same kind of session.
+  const mode: SessionStartOptions['mode'] = ctx.settings.sessionMode
   const [preview] = useAsync(() => api.preview(), [ctx.settings.roles])
   const [sessions] = useAsync(() => api.history.list(), [snap.sessionId])
   const [profiles] = useAsync(() => api.profiles.list(), [])
@@ -32,7 +32,7 @@ export function Home({ ctx, snap }: { ctx: Ctx; snap: AppSnapshot }) {
                 ['meeting', 'Встреча (только транскрипт)']
               ] as const
             ).map(([m, label]) => (
-              <button key={m} className={`chip ${mode === m ? 'accent' : ''}`} onClick={() => setMode(m)} disabled={!!snap.sessionId}>
+              <button key={m} className={`chip ${mode === m ? 'accent' : ''}`} onClick={() => void ctx.patch({ sessionMode: m })} disabled={!!snap.sessionId}>
                 {t(label)}
               </button>
             ))}

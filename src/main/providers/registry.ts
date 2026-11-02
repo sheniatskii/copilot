@@ -16,7 +16,8 @@ export function isLocalTarget(baseUrl: string, model: string): boolean {
 }
 
 const MODEL_TTL_MS = 10 * 60_000
-const RED_PNG = solidPng(32, [220, 20, 20]).toString('base64')
+// Big enough that low-detail image modes still see a clear colour; a 32 px tile came back as «Gray» now and then.
+const RED_PNG = solidPng(256, [220, 20, 20]).toString('base64')
 
 export interface ProviderTestReport {
   models: TestResult

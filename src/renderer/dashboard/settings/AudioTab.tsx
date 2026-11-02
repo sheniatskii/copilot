@@ -296,6 +296,14 @@ export function AudioTab({ ctx, asr }: { ctx: Ctx; asr: AsrStatus | null }) {
             }
           />
         </label>
+        <Toggle
+          on={s.vocabPrompt}
+          onChange={(v) => void ctx.patch({ asr: { vocabPrompt: v } })}
+          label={t('Подсказывать термины распознаванию')}
+          hint={t(
+            'Термины из словаря уходят в whisper как подсказка — аббревиатуры (SDLC, STLC) пишутся латиницей, а не «СДЛС». Если в тишине начнут появляться лишние слова из словаря — выключите.'
+          )}
+        />
         {asr?.lastLatencyMs != null && <div className="small muted">{t('Последняя задержка распознавания: {ms} мс', { ms: asr.lastLatencyMs })}</div>}
       </section>
     </div>

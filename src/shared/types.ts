@@ -213,7 +213,9 @@ export interface Settings {
   answerInstructions: string
   /** text — a ready sentence to say plus talking points; cues — 3–5 short cues to answer in your own words. */
   answerFormat: 'text' | 'cues'
-  asr: { backend: 'cpu' | 'cuda'; model: string; language: 'auto' | Lang; vocabulary: string[]; threads: number }
+  /** The session mode last chosen on Home; every other way to start a session (overlay, tray, hotkey) uses it too. */
+  sessionMode: SessionStartOptions['mode']
+  asr: { backend: 'cpu' | 'cuda'; model: string; language: 'auto' | Lang; vocabulary: string[]; vocabPrompt: boolean; threads: number }
   audio: { micDeviceId: string | null; captureMic: boolean; captureSystem: boolean }
   contextWindowMin: number
   overlay: OverlaySettings
@@ -268,15 +270,25 @@ export interface SessionCost {
   requests: number
 }
 
+/** An earlier question of this session with the answers it got, for paging back in the overlay. */
+export interface HistoryEntry {
+  questionId: string
+  text: string
+  answers: Partial<Record<AnswerKind, string>>
+}
+
 export interface AppSnapshot {
   sessionId: string | null
   startedAt: number | null
+  mode: SessionStartOptions['mode'] | null
   state: ConvState
   listening: boolean
   activeQuestion: ActiveQuestion | null
   candidates: Candidate[]
   answers: Partial<Record<AnswerKind, AnswerEvent>>
-  recentQuestions: { questionId: string; text: string }[]
+  /** Earlier questions of this session, newest first, with the answers they got. */
+  recentQuestions: { questionId: string; text: string; answers: Partial<Record<AnswerKind, string>> }[]
+  history: HistoryEntry[]
   partial: Partial<Record<Source, string>>
   segments: TranscriptSegment[]
   status: Record<'mic' | 'system' | 'asr' | 'llm' | 'vision' | 'overlay' | 'protection' | 'network', ComponentStatus>

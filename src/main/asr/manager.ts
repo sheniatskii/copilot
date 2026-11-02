@@ -2,7 +2,7 @@ import type { AsrStatus, Lang, Source, TranscriptSegment } from '@shared/types'
 import type { FetchFn } from '../providers/adapter'
 import { AsrAssets, macInstallHint, MODELS, type AsrBackend } from './assets'
 import type { SileroGate } from './silero'
-import { applyVocabulary, diagnoseWhisperFailure, isHallucination, stripTags, WhisperSidecar } from './whisper'
+import { applyVocabulary, diagnoseWhisperFailure, isHallucination, isPromptEcho, stripTags, vocabularyPrompt, WhisperSidecar } from './whisper'
 import { t } from '@shared/i18n'
 
 // Silero needs at least this much detected speech in a clip; below it the clip is music/noise/silence and never reaches whisper.
@@ -23,6 +23,8 @@ export interface AsrConfig {
   model: string
   language: 'auto' | Lang
   vocabulary: string[]
+  /** Pass the vocabulary to whisper as its prompt (spelling bias), not only as a post-fix. */
+  vocabPrompt: boolean
   threads: number
 }
 
@@ -212,14 +214,14 @@ export class AsrManager {
           continue
         }
         try {
-          // No vocabulary in the prompt: whisper.cpp echoes the prompt on noise (phantom "Docker"/"Kubernetes").
-          const r = await sc.transcribe(job.pcm, lang, '')
+          const prompt = this.cfg.vocabPrompt ? vocabularyPrompt(this.cfg.vocabulary) : ''
+          const r = await sc.transcribe(job.pcm, lang, prompt)
           this.st = { ...this.st, lastLatencyMs: r.ms }
           if (job.final) {
             this.ev.status(this.st)
             this.ev.log('asr_latency', { ms: r.ms, audioMs: Math.round(job.pcm.length / 16), lang, model: this.cfg.model, backend: this.cfg.backend })
           }
-          const garbage = isHallucination(r.text) || (r.noSpeech > 0.6 && r.avgLogprob < -1)
+          const garbage = isHallucination(r.text) || (r.noSpeech > 0.6 && r.avgLogprob < -1) || (!!prompt && isPromptEcho(r.text, this.cfg.vocabulary))
           let text = garbage ? '' : stripTags(r.text)
           if (text) text = applyVocabulary(text, this.cfg.vocabulary)
           this.emit(job, text, r.lang && LANGS.has(r.lang) ? r.lang : null)

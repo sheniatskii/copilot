@@ -60,10 +60,9 @@ function lev(a: string, b: string): number {
   return d[n]
 }
 
-// The vocabulary used to go into whisper's prompt, but whisper.cpp regurgitates the prompt on noise —
-// that is where phantom "Docker"/"Kubernetes" came from. Instead I fix the spelling/casing of a known
-// term the model ALREADY produced; a fuzzy match can only rewrite a word that was recognized, never
-// insert one that was not spoken. Short terms match on casing only, to avoid "reacts" → "React".
+// Spelling fix-up: I correct the spelling/casing of a known term the model ALREADY produced; a fuzzy match can
+// only rewrite a word that was recognized, never insert one that was not spoken. Short terms match on casing
+// only, to avoid "reacts" → "React".
 export function applyVocabulary(text: string, vocab: string[]): string {
   const terms = vocab.map((t) => ({ canon: t, key: norm(t) })).filter((t) => t.key.length >= 3)
   if (!terms.length) return text
@@ -79,6 +78,30 @@ export function applyVocabulary(text: string, vocab: string[]): string {
     }
     return word
   })
+}
+
+const GLOSSARY = 'Glossary:'
+
+/**
+ * The terms as whisper's prompt, so «SDLC» comes out in Latin letters instead of «СДЛС». whisper.cpp echoes its
+ * prompt on silence and noise; the Silero gate now drops those clips first, and isPromptEcho() catches the rest.
+ */
+export function vocabularyPrompt(vocab: string[]): string {
+  let out = ''
+  for (const term of vocab.map((t) => t.trim()).filter(Boolean)) {
+    const next = out ? `${out}, ${term}` : term
+    if (next.length > 300) break // whisper keeps only the last ~224 tokens of a prompt
+    out = next
+  }
+  return out ? `${GLOSSARY} ${out}.` : ''
+}
+
+/** True when the «transcript» is the prompt coming back: only glossary words, or the glossary label itself. */
+export function isPromptEcho(text: string, vocab: string[]): boolean {
+  if (text.toLowerCase().includes(GLOSSARY.toLowerCase())) return true
+  const terms = new Set(vocab.flatMap((t) => t.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []))
+  const words = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
+  return words.length > 0 && terms.size > 0 && words.every((w) => terms.has(w))
 }
 
 export function encodeWav(pcm: Int16Array, sampleRate = 16000): Buffer {

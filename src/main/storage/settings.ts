@@ -9,7 +9,15 @@ export const DEFAULT_SETTINGS: Settings = {
   autoAnswer: false,
   answerInstructions: '',
   answerFormat: 'text',
-  asr: { backend: 'cpu', model: 'base', language: 'ru', vocabulary: ['PostgreSQL', 'FastAPI', 'Kubernetes', 'Docker', 'React', 'TypeScript'], threads: 6 },
+  sessionMode: 'practice',
+  asr: {
+    backend: 'cpu',
+    model: 'base',
+    language: 'ru',
+    vocabulary: ['PostgreSQL', 'FastAPI', 'Kubernetes', 'Docker', 'React', 'TypeScript'],
+    vocabPrompt: true,
+    threads: 6
+  },
   audio: { micDeviceId: null, captureMic: true, captureSystem: true },
   contextWindowMin: 3,
   overlay: {

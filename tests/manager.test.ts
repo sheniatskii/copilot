@@ -150,6 +150,18 @@ describe('SessionManager', () => {
     expect(String(adapter.calls[0].messages[0].content)).toContain('2–5 cues')
   })
 
+  it('an earlier question keeps its answers in the history list', async () => {
+    const { mgr } = setup()
+    mgr.start({ mode: 'practice' })
+    mgr.askTyped('Що таке регресійне тестування?')
+    await until(() => mgr.snap.answers.say?.status === 'done')
+    mgr.askTyped('Що таке smoke-тестування?')
+    await until(() => mgr.snap.answers.say?.status === 'done' && mgr.snap.activeQuestion?.text.includes('smoke') === true)
+    const past = mgr.snap.recentQuestions[0]
+    expect(past.text).toContain('регресійне')
+    expect(past.answers.say).toBe('answer for Що таке регресійне тестування?')
+  })
+
   it('typed question yields say + points and settles in answer_ready', async () => {
     const { mgr } = setup()
     mgr.start({ mode: 'practice' })
